@@ -368,7 +368,7 @@ def on_canvas_close(
         for left in data_by_timestamp.values():
             right = right.join(left, on='datetime', how='full', coalesce=True)
         dfs.append(right)
-    df = pl.concat(dfs).sort('datetime')
+    df = pl.concat(dfs, how='diagonal_relaxed').sort('datetime')
     fig = make_subplots(specs=[[{'secondary_y': True}]])
     fig.update_layout(
         margin={'r': 0, 'l': 50, 't': 30, 'b': 125},
