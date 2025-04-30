@@ -400,15 +400,12 @@ def on_canvas_close(
             'spikecolor': 'black',
         },
     )
-    for channel in prim_channels:
-        fig.add_trace(
-            go.Scatter(x=df['datetime'], y=df[channel], mode='lines', name=channel)
-        )
-    for channel in sec_channels:
-        fig.add_trace(
-            go.Scatter(x=df['datetime'], y=df[channel], mode='lines', name=channel),
-            secondary_y=True,
-        )
+    for channels, secondary_y in [(prim_channels, False), (sec_channels, True)]:
+        for channel in channels:
+            fig.add_trace(
+                go.Scatter(x=df['datetime'], y=df[channel], mode='lines', name=channel),
+                secondary_y=secondary_y,
+            )
     return fig
 
 
