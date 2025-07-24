@@ -430,15 +430,20 @@ def shutdown(_):
     closed. The function then interacts with the document to click the hidden
     'shutdown_button' which runs the code below to terminate the process running the
     server running this app when the last tab (tracked by the active_clients global
-    variable) has been closed.
+    variable) has been closed. This behavior isn't super consistent, so I've disabled at
+    least the shutdown portion of this. Active clients will still be tracked. The
+    inconsistent behavior might be related to me using a *gasp* global variable.
     """
+    # TODO: migrate away from a global variable for this. See docstring.
     logger.info('Browser tab closed.')
     global active_clients
     active_clients -= 1
     logger.info(f'Active clients: {active_clients}')
-    if active_clients < 1:
-        logger.info('No more client connections. Shutting down server.')
-        os.kill(os.getpid(), signal.SIGTERM)
+
+
+#     if active_clients < 1:
+#         logger.info('No more client connections. Shutting down server.')
+#         os.kill(os.getpid(), signal.SIGTERM)
 
 
 def open_first_tab():
