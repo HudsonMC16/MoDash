@@ -405,7 +405,13 @@ def on_canvas_close(
     for channels, secondary_y in [(prim_channels, False), (sec_channels, True)]:
         for channel in channels:
             fig.add_trace(
-                go.Scatter(x=df['datetime'], y=df[channel], mode='lines', name=channel),
+                go.Scatter(
+                    x=df['datetime'],
+                    y=df[channel],
+                    mode='lines',
+                    name=channel,
+                    connectgaps=True,
+                ),
                 secondary_y=secondary_y,
             )
     return fig
