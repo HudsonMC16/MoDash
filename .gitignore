@@ -12,6 +12,7 @@ wheels/
 # Dev support stuff
 test_data/
 uploads/
+scratch.py
 
 # Logs
 logs/
