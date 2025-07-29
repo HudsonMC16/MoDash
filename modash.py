@@ -392,13 +392,13 @@ def on_canvas_close(
         yaxis={
             'spikemode': 'across',
             'spikesnap': 'cursor',
-            'spikethickness': 1,
+            'spikethickness': 0.5,
             'spikecolor': 'black',
         },
         yaxis2={
             'spikemode': 'across',
             'spikesnap': 'cursor',
-            'spikethickness': 1,
+            'spikethickness': 0.5,
             'spikecolor': 'black',
         },
     )
@@ -409,8 +409,9 @@ def on_canvas_close(
                     x=df['datetime'],
                     y=df[channel],
                     mode='lines',
-                    name=channel,
+                    name=channel + (' (secondary)' if secondary_y else ' (primary)'),
                     connectgaps=True,
+                    showlegend=True,
                 ),
                 secondary_y=secondary_y,
             )
