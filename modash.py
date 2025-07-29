@@ -7,13 +7,16 @@
 # TODO: Add radio button to remove gaps in time between files. Timestamps would need to
 # be normalized to zero and then annotations added to the chart
 
-# TODO: Add ability to add stacked subplots
-
 # TODO: Add feature to add dimension of test number from within MoSAIC TDMS files
 
+# TODO: Add hover events to legend to highlight traces when you hover over their entries
+# in the legend
+
+# TODO: Add ability to add more than two y-axes
+
+# TODO: Add ability to add stacked subplots
+
 import json
-import os
-import signal
 import webbrowser
 from pathlib import Path
 from threading import Timer
