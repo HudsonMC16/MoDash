@@ -1,11 +1,16 @@
 """Experimental data visualization tool for MoSAIC tdms files."""
 
-# TODO: Add radio button to normalize timestamps to zero. I'm envisioning this being
-# used to compare traces across multiple files, so each channel/file combination would
-# have a different color
+# NOTE: Implementing many of the features below would probably be best in a separate
+# canvas accessed via a "GUI Management" or "Viz Management" button. I'm thinking there
+# is a radio button which controls how separate files are handled:
+# - Same axes, actual timestamps
+# - Facet plots (side-by-side or stacked)
+# - Same axes, normalized timestamps:
+#       - all files normalized to zero with different color traces for each file...
+#       - files concatenated with vlines at file boundaries
 
-# TODO: Add radio button to remove gaps in time between files. Timestamps would need to
-# be normalized to zero and then annotations added to the chart
+# TODO: add button to save options and possibly channel selections as defaults or even
+# to a file so they can be recalled later
 
 # TODO: Add feature to add dimension of test number from within MoSAIC TDMS files
 
@@ -13,8 +18,6 @@
 # in the legend
 
 # TODO: Add ability to add more than two y-axes
-
-# TODO: Add ability to add stacked subplots
 
 import json
 import webbrowser
@@ -48,9 +51,6 @@ for item in sorted(UPLOAD_PATH.glob('**/*'), reverse=True):
         item.rmdir()
 du.configure_upload(app, folder=UPLOAD_PATH)
 
-# TODO: create tabindex values for all of these components which require interaction so
-# the user can tab between them easily
-
 primary_dropdown = dcc.Dropdown(
     id='primary_dropdown',
     multi=True,
@@ -70,7 +70,7 @@ secondary_dropdown = dcc.Dropdown(
 )
 
 file_selection = du.Upload(
-    max_file_size=500,
+    max_file_size=1500,
     max_files=15,
     filetypes=['tdms'],
     id='dash_uploader',
@@ -86,8 +86,8 @@ file_list = dash_table.DataTable(
     style_cell={'textAlign': 'left'},
 )
 
-data_mgmt_button = dbc.Button(
-    'Data Management', outline=True, color='primary', id='data_mgmt_button'
+data_mgmt_canvas_button = dbc.Button(
+    'Data Management', outline=True, color='primary', id='data_mgmt_canvas_button'
 )
 
 new_tab_button = dbc.Button(
@@ -96,6 +96,60 @@ new_tab_button = dbc.Button(
     color='success',
     id='new_tab_button',
     style={'margin-left': 5},
+)
+
+export_canvas_button = dbc.Button(
+    'Export Plot',
+    outline=True,
+    color='info',
+    id='export_canvas_button',
+    style={'margin-left': 5},
+)
+
+export_dir_input = dbc.Input(
+    id='export_dir_input',
+    debounce=True,
+    invalid=True,
+    persistence=True,
+    persistence_type='local',
+    value=str(Path(Path.home(), 'Documents', 'MoDash')),
+)
+
+
+export_filename_input = dbc.Input(
+    id='export_filename_input',
+    debounce=True,
+    persistence=True,
+    persistence_type='local',
+    value='<dt>',
+)
+
+export_interactive_button = dbc.Button(
+    'Export Interactive Plot',
+    outline=True,
+    color='info',
+    id='export_interactive_button',
+    style={'margin-left': 5},
+)
+
+export_image_button = dbc.Button(
+    'Export Image',
+    outline=True,
+    color='info',
+    id='export_image_button',
+    style={'margin-left': 5},
+)
+
+plotly_js_radio = dbc.RadioItems(
+    {
+        'include': 'Include in every exported html file. Adds ≈3 MB to each file.',
+        'directory': 'Inlcude as separate file in directory, if it does not already exist.',
+        'cdn': 'Use content delivery network to download latest Plotly javascript when file is opened. Requires network access to open files, but data is not sent over the network',
+    },
+    label_style={'margin-bottom': '5px'},
+    persistence=True,
+    persistence_type='local',
+    value='include',
 )
 
 # This button's style is set to 'none' so it doesn't appear in the layout. It's meant to
@@ -129,6 +183,64 @@ data_mgmt_canvas = dbc.Offcanvas(
     id='data_mgmt_canvas',
 )
 
+export_canvas = dbc.Offcanvas(
+    [
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dbc.Alert(
+                            [html.Div('Export Directory:'), export_dir_input],
+                            style={'margin-top': 0, 'margin-bottom': 5},
+                            color='info',
+                        ),
+                        dbc.Alert(
+                            [
+                                html.Div('Export Filename:'),
+                                export_filename_input,
+                            ],
+                            style={'margin-top': 0, 'margin-bottom': 5},
+                            color='info',
+                        ),
+                        export_interactive_button,
+                        export_image_button,
+                        dbc.Alert(
+                            [
+                                html.H6('Available placeholders for filenames:'),
+                                html.Div('<dt> : ISO formatted datetime'),
+                                html.Div('<d> : ISO formatted date'),
+                                html.Div('<t> : ISO formatted time'),
+                            ],
+                            color='warning',
+                            style={'margin-top': 5, 'margin-bottom': 0},
+                        ),
+                        dbc.Alert(
+                            [
+                                html.Div(
+                                    'Images will be exported as png files and interactive plots will be exported as html files.'
+                                ),
+                            ],
+                            color='warning',
+                            style={'margin-top': 5, 'margin-bottom': 0},
+                        ),
+                        dbc.Alert(
+                            [
+                                html.H6('Interactive Plotly Javascript Handling:'),
+                                plotly_js_radio,
+                            ],
+                            color='success',
+                            style={'margin-top': 5},
+                        ),
+                    ]
+                )
+            ]
+        )
+    ],
+    is_open=False,
+    close_button=False,
+    id='export_canvas',
+)
+
 tdms_graph = dcc.Graph(
     id='tdms_graph',
     config={
@@ -148,21 +260,29 @@ app.layout = dbc.Container(
         dbc.Row(
             [
                 dbc.Col(
-                    [data_mgmt_button, new_tab_button, shutdown_button, tdms_graph],
+                    [
+                        data_mgmt_canvas_button,
+                        new_tab_button,
+                        export_canvas_button,
+                        shutdown_button,
+                        tdms_graph,
+                    ],
                     width='auto',
                     style={'margin-top': 5},
                 ),
             ]
         ),
         data_mgmt_canvas,
+        export_canvas,
         dcc.Store(id='paths_store'),
+        dcc.Download(id='fig_html_download', type='text/html'),
     ],
 )
 
 
 @callback(
     Output(data_mgmt_canvas.id, 'is_open'),
-    Input(data_mgmt_button.id, 'n_clicks'),
+    Input(data_mgmt_canvas_button.id, 'n_clicks'),
     State(data_mgmt_canvas.id, 'is_open'),
 )
 def toggle_data_mgmt_canvas(
@@ -180,6 +300,32 @@ def toggle_data_mgmt_canvas(
         no_update: will return without updating status of outputs
     """
     logger.info('Data management canvas opened.')
+    if n_clicks:
+        return not is_open
+    return no_update
+
+
+@callback(
+    Output(export_canvas.id, 'is_open'),
+    Input(export_canvas_button.id, 'n_clicks'),
+    State(export_canvas.id, 'is_open'),
+    prevent_initial_call=True,
+)
+def toggle_export_canvas(
+    n_clicks: int,
+    is_open: bool,
+):
+    """Callback to open export canvas if it is closed.
+
+    Args:
+        n_clicks (int): number of times the export button has been clicked
+        is_open (bool): whether or not the export canvas is open
+
+    Returns:
+        bool: indicates new status of export canvas
+        no_update: will return without updating status of outputs
+    """
+    logger.info('Export canvas opened.')
     if n_clicks:
         return not is_open
     return no_update
@@ -277,12 +423,12 @@ def on_add_files(new_paths_json: str, current_rows: list[dict]):
     State(primary_dropdown.id, 'value'),
     State(secondary_dropdown.id, 'value'),
 )
-def on_canvas_close(
+def on_data_canvas_close(
     canvas_open: bool,
     file_list_rows: list[dict] | None,
     prim_channels: list[str] | None,
     sec_channels: list[str] | None,
-):
+) -> tuple[go.Figure, str]:
     """Processes tdms files and channels lists to create figure.
 
     This callback does the heavy lifting of reading the tdms files, aligning the
@@ -403,6 +549,7 @@ def on_canvas_close(
             'spikesnap': 'cursor',
             'spikethickness': 0.5,
             'spikecolor': 'black',
+            'tickmode': 'sync',
         },
     )
     for channels, secondary_y in [(prim_channels, False), (sec_channels, True)]:
@@ -429,6 +576,20 @@ def on_new_tab(_):
     active_clients += 1
     logger.info(f'Active clients: {active_clients}')
     webbrowser.open_new(f'http://{HOST}:{PORT}/')
+
+
+@callback(
+    Output('fig_html_download', 'data'),
+    Input(export_interactive_button.id, 'n_clicks'),
+    State(tdms_graph.id, 'figure'),
+    # State(export_dir_input.id, 'value'),
+    # State(export_filename_input.id, 'value'),
+    prevent_initial_call=True,
+)
+def on_export_interactive(_, fig: dict):
+    logger.info('Export interactive button clicked.')
+    # Path(dir).mkdir(exist_ok=True)
+    return dcc.send_string(go.Figure(fig).to_html(), filename='testing.html')
 
 
 @callback(Input(shutdown_button.id, 'n_clicks'), prevent_initial_call=True)
