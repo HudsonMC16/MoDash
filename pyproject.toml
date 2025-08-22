@@ -1,13 +1,14 @@
 [project]
 name = "modash"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "Webapp for exploring time series data within MoSAIC-style tdms files"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "dash>=3.0.3",
     "dash-bootstrap-components>=2.0.1",
     "dash-uploader==0.7.0a2",
+    "kaleido>=1.0.0",
     "loguru>=0.7.3",
     "nptdms>=1.10.0",
     "plotly>=6.0.1",

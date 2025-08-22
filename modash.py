@@ -23,6 +23,7 @@ import json
 import webbrowser
 from pathlib import Path
 from threading import Timer
+from datetime import datetime as dt
 
 import dash_bootstrap_components as dbc
 import dash_uploader as du
@@ -105,57 +106,43 @@ export_canvas_button = dbc.Button(
     id='export_canvas_button',
     style={'margin-left': 5},
 )
-
-export_dir_input = dbc.Input(
-    id='export_dir_input',
-    debounce=True,
-    invalid=True,
-    persistence=True,
-    persistence_type='local',
-    value=str(Path(Path.home(), 'Documents', 'MoDash')),
-)
-
-
 export_filename_input = dbc.Input(
     id='export_filename_input',
     debounce=True,
     persistence=True,
     persistence_type='local',
-    value='<dt>',
+    value='MoDash-<fdt>',
 )
-
 export_interactive_button = dbc.Button(
     'Export Interactive Plot',
     outline=True,
     color='info',
     id='export_interactive_button',
-    style={'margin-left': 5},
+    # style={'margin-left': 5},
 )
-
 export_image_button = dbc.Button(
     'Export Image',
     outline=True,
     color='info',
     id='export_image_button',
-    style={'margin-left': 5},
+    # style={'margin-left': 5},
 )
-
 plotly_js_radio = dbc.RadioItems(
     {
-        'include': 'Include in every exported html file. Adds ≈3 MB to each file.',
-        'directory': 'Inlcude as separate file in directory, if it does not already exist.',
-        'cdn': 'Use content delivery network to download latest Plotly javascript when file is opened. Requires network access to open files, but data is not sent over the network',
+        'include': 'Include within every exported html file. Adds ≈4-5 MB to each file.',
+        'directory': 'Inlcude as separate "plotly.min.js" file in the export directory, if it does not already exist.',
+        'cdn': 'Use content delivery network to download latest Plotly javascript when file is opened. Requires network access to open files, but underlying chart data is not sent over the network',
     },
     label_style={'margin-bottom': '5px'},
     persistence=True,
     persistence_type='local',
-    value='include',
+    value='directory',
+    id='plotly_js_radio',
 )
 
 # This button's style is set to 'none' so it doesn't appear in the layout. It's meant to
 # be hidden and only exists to interact with the dash callback to shutdown the server
 shutdown_button = html.Button(id='shutdown_button', style={'display': 'none'})
-
 
 data_mgmt_canvas = dbc.Offcanvas(
     [
@@ -190,11 +177,6 @@ export_canvas = dbc.Offcanvas(
                 dbc.Col(
                     [
                         dbc.Alert(
-                            [html.Div('Export Directory:'), export_dir_input],
-                            style={'margin-top': 0, 'margin-bottom': 5},
-                            color='info',
-                        ),
-                        dbc.Alert(
                             [
                                 html.Div('Export Filename:'),
                                 export_filename_input,
@@ -202,14 +184,45 @@ export_canvas = dbc.Offcanvas(
                             style={'margin-top': 0, 'margin-bottom': 5},
                             color='info',
                         ),
-                        export_interactive_button,
-                        export_image_button,
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    dcc.Loading(
+                                        [
+                                            export_interactive_button,
+                                            dcc.Download(id='fig_html_download'),
+                                        ]
+                                    ),
+                                    width=6,
+                                    align='stretch',
+                                ),
+                                dbc.Col(
+                                    dcc.Loading(
+                                        [
+                                            export_image_button,
+                                            dcc.Download(id='fig_image_download'),
+                                        ]
+                                    ),
+                                    width=6,
+                                    align='stretch',
+                                ),
+                            ]
+                        ),
                         dbc.Alert(
                             [
                                 html.H6('Available placeholders for filenames:'),
-                                html.Div('<dt> : ISO formatted datetime'),
-                                html.Div('<d> : ISO formatted date'),
-                                html.Div('<t> : ISO formatted time'),
+                                html.Div('<dt> : Current datetime'),
+                                html.Div('<d> : Current date'),
+                                html.Div('<t> : Current clock time (24 hr)'),
+                                html.Div(
+                                    '<fdt> : Datetime of earliest timestamp in chart data'
+                                ),
+                                html.Div(
+                                    '<fd> : Date of earliest timestamp in chart data'
+                                ),
+                                html.Div(
+                                    '<ft> : Clock time (24 hr) of earliest timestamp in chart data'
+                                ),
                             ],
                             color='warning',
                             style={'margin-top': 5, 'margin-bottom': 0},
@@ -265,7 +278,7 @@ app.layout = dbc.Container(
                         new_tab_button,
                         export_canvas_button,
                         shutdown_button,
-                        tdms_graph,
+                        dcc.Loading(tdms_graph),
                     ],
                     width='auto',
                     style={'margin-top': 5},
@@ -275,7 +288,7 @@ app.layout = dbc.Container(
         data_mgmt_canvas,
         export_canvas,
         dcc.Store(id='paths_store'),
-        dcc.Download(id='fig_html_download', type='text/html'),
+        dcc.Store(id='timestamp_store'),
     ],
 )
 
@@ -418,6 +431,7 @@ def on_add_files(new_paths_json: str, current_rows: list[dict]):
 
 @callback(
     Output(tdms_graph.id, 'figure'),
+    Output('timestamp_store', 'data'),
     Input(data_mgmt_canvas.id, 'is_open'),
     State(file_list.id, 'data'),
     State(primary_dropdown.id, 'value'),
@@ -428,7 +442,7 @@ def on_data_canvas_close(
     file_list_rows: list[dict] | None,
     prim_channels: list[str] | None,
     sec_channels: list[str] | None,
-) -> tuple[go.Figure, str]:
+) -> tuple[go.Figure, str] | type[no_update]:
     """Processes tdms files and channels lists to create figure.
 
     This callback does the heavy lifting of reading the tdms files, aligning the
@@ -467,10 +481,10 @@ def on_data_canvas_close(
     logger.info('Data management canvas closed.')
     if not (prim_channels or sec_channels):
         logger.info('No data to plot, no channels selected.')
-        return
+        return no_update
     if not file_list_rows:
         logger.info('No data to plot, no files selected.')
-        return
+        return no_update
     if prim_channels is None:
         prim_channels = []
     if sec_channels is None:
@@ -519,7 +533,14 @@ def on_data_canvas_close(
         for left in data_by_timestamp.values():
             right = right.join(left, on='datetime', how='full', coalesce=True)
         dfs.append(right)
-    df = pl.concat(dfs, how='diagonal_relaxed').sort('datetime')
+    df: pl.DataFrame = pl.concat(dfs, how='diagonal_relaxed').sort('datetime')
+    first_timestamp = df['datetime'].min()
+    fdt = {
+        'fdt': first_timestamp.strftime('%Y%m%dT%H%M%S'),
+        'fd': first_timestamp.date().strftime('%Y%m%d'),
+        'ft': first_timestamp.time().strftime('T%H%M%S'),
+    }
+
     fig = make_subplots(specs=[[{'secondary_y': True}]])
     fig.update_layout(
         margin={'r': 0, 'l': 50, 't': 30, 'b': 125},
@@ -556,8 +577,14 @@ def on_data_canvas_close(
         for channel in channels:
             fig.add_trace(
                 go.Scatter(
-                    x=df['datetime'],
-                    y=df[channel],
+                    # Converting all these to lists because if they remain as polars
+                    # series (or any rich data type) when this callback is complete and
+                    # the figure is serialized to json, the metadata of the richer data
+                    # type will be saved alongside the actual data in the json,
+                    # ballooning the size on disk, and therefore the export size. It
+                    # also affects performance.
+                    x=df['datetime'].to_list(),
+                    y=df[channel].to_list(),
                     mode='lines',
                     name=channel + (' (secondary)' if secondary_y else ' (primary)'),
                     connectgaps=True,
@@ -565,7 +592,7 @@ def on_data_canvas_close(
                 ),
                 secondary_y=secondary_y,
             )
-    return fig
+    return fig, json.dumps(fdt)
 
 
 @callback(Input(new_tab_button.id, 'n_clicks'))
@@ -582,14 +609,83 @@ def on_new_tab(_):
     Output('fig_html_download', 'data'),
     Input(export_interactive_button.id, 'n_clicks'),
     State(tdms_graph.id, 'figure'),
-    # State(export_dir_input.id, 'value'),
-    # State(export_filename_input.id, 'value'),
+    State(export_filename_input.id, 'value'),
+    State(plotly_js_radio.id, 'value'),
+    State('timestamp_store', 'data'),
     prevent_initial_call=True,
 )
-def on_export_interactive(_, fig: dict):
+def on_export_interactive(
+    _, fig_dict: dict, filename_raw: str, plotlyjs_select: str, ts_json: str
+) -> dict:
+    """Passes current figure html as dictionary to download component.
+
+    Args:
+        fig_dict (dict): dictionary containing serialized figure data
+        filename_raw (str): string user has entered into the filename input box,
+            including any placeholders
+        plotlyjs_select (str): selection user has made with the plotlyjs radio buttons
+        ts_json (str): json formatted string containing information about the earliest
+            timestamp in the chart data
+
+    Returns:
+        Dictionary formatted in the way the download component expects which contains
+            plotly figure html representation.
+    """
     logger.info('Export interactive button clicked.')
-    # Path(dir).mkdir(exist_ok=True)
-    return dcc.send_string(go.Figure(fig).to_html(), filename='testing.html')
+    plotlyjs = True if plotlyjs_select == 'include' else plotlyjs_select
+    now = dt.now()
+    ts_dict = json.loads(ts_json)
+    filename = (
+        filename_raw.replace('<dt>', now.strftime('%Y%m%dT%H%M%S'))
+        .replace('<t>', now.time().strftime('T%H%M%S'))
+        .replace('<d>', now.date().strftime('%Y%m%d'))
+        .replace('<fdt>', ts_dict['fdt'])
+        .replace('<fd>', ts_dict['fd'])
+        .replace('<ft>', ts_dict['ft'])
+    ) + '.html'
+    return dcc.send_string(
+        go.Figure(fig_dict).to_html(include_plotlyjs=plotlyjs),
+        filename=filename,
+        type='text/html',
+    )
+
+
+@callback(
+    Output('fig_image_download', 'data'),
+    Input(export_image_button.id, 'n_clicks'),
+    State(tdms_graph.id, 'figure'),
+    State(export_filename_input.id, 'value'),
+    State('timestamp_store', 'data'),
+    prevent_initial_call=True,
+)
+def on_export_image(_, fig_dict: dict, filename_raw: str, ts_json: str) -> dict:
+    """Passes current figure image as dictionary to download component.
+
+    Args:
+        fig_dict (dict): dictionary containing serialized figure data
+        filename_raw (str): string user has entered into the filename input box,
+            including any placeholders
+        ts_json (str): json formatted string containing information about the earliest
+            timestamp in the chart data
+
+    Returns:
+        Dictionary formatted in the way the download component expects which contains
+            plotly figure image representation.
+    """
+    logger.info('Export interactive button clicked.')
+    now = dt.now()
+    ts_dict = json.loads(ts_json)
+    filename = (
+        filename_raw.replace('<dt>', now.strftime('%Y%m%dT%H%M%S'))
+        .replace('<t>', now.time().strftime('T%H%M%S'))
+        .replace('<d>', now.date().strftime('%Y%m%d'))
+        .replace('<fdt>', ts_dict['fdt'])
+        .replace('<fd>', ts_dict['fd'])
+        .replace('<ft>', ts_dict['ft'])
+    ) + '.png'
+    return dcc.send_bytes(
+        go.Figure(fig_dict).to_image(format='png'), filename=filename, type='image/png'
+    )
 
 
 @callback(Input(shutdown_button.id, 'n_clicks'), prevent_initial_call=True)
