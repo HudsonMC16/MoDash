@@ -21,9 +21,9 @@
 
 import json
 import webbrowser
+from datetime import datetime as dt
 from pathlib import Path
 from threading import Timer
-from datetime import datetime as dt
 
 import dash_bootstrap_components as dbc
 import dash_uploader as du
@@ -113,6 +113,30 @@ export_filename_input = dbc.Input(
     persistence_type='local',
     value='MoDash-<fdt>',
 )
+export_width_input = dbc.Input(
+    id='export_width_input',
+    debounce=True,
+    persistence=True,
+    persistence_type='local',
+    value=1200,
+    type='number',
+    step=1,
+    required=True,
+    min=1,
+    max=4096,
+)
+export_height_input = dbc.Input(
+    id='export_height_input',
+    debounce=True,
+    persistence=True,
+    persistence_type='local',
+    value=800,
+    type='number',
+    step=1,
+    required=True,
+    min=1,
+    max=2160,
+)
 export_interactive_button = dbc.Button(
     'Export Interactive Plot',
     outline=True,
@@ -180,6 +204,19 @@ export_canvas = dbc.Offcanvas(
                             [
                                 html.Div('Export Filename:'),
                                 export_filename_input,
+                            ],
+                            style={'margin-top': 0, 'margin-bottom': 5},
+                            color='info',
+                        ),
+                        dbc.Alert(
+                            [
+                                html.Div('Exported image width and height (pixels):'),
+                                dbc.Row(
+                                    [
+                                        dbc.Col(export_width_input),
+                                        dbc.Col(export_height_input),
+                                    ]
+                                ),
                             ],
                             style={'margin-top': 0, 'margin-bottom': 5},
                             color='info',
@@ -615,7 +652,11 @@ def on_new_tab(_):
     prevent_initial_call=True,
 )
 def on_export_interactive(
-    _, fig_dict: dict, filename_raw: str, plotlyjs_select: str, ts_json: str
+    _,
+    fig_dict: dict,
+    filename_raw: str,
+    plotlyjs_select: str,
+    ts_json: str,
 ) -> dict:
     """Passes current figure html as dictionary to download component.
 
@@ -656,9 +697,18 @@ def on_export_interactive(
     State(tdms_graph.id, 'figure'),
     State(export_filename_input.id, 'value'),
     State('timestamp_store', 'data'),
+    State(export_width_input.id, 'value'),
+    State(export_height_input.id, 'value'),
     prevent_initial_call=True,
 )
-def on_export_image(_, fig_dict: dict, filename_raw: str, ts_json: str) -> dict:
+def on_export_image(
+    _,
+    fig_dict: dict,
+    filename_raw: str,
+    ts_json: str,
+    image_width: str,
+    image_height: str,
+) -> dict:
     """Passes current figure image as dictionary to download component.
 
     Args:
@@ -667,6 +717,10 @@ def on_export_image(_, fig_dict: dict, filename_raw: str, ts_json: str) -> dict:
             including any placeholders
         ts_json (str): json formatted string containing information about the earliest
             timestamp in the chart data
+        image_width (str): value user has input for desired width in pixels of exported
+            images
+        image_height (str): value user has input for desired height in pixels of exported
+            images
 
     Returns:
         Dictionary formatted in the way the download component expects which contains
@@ -684,7 +738,11 @@ def on_export_image(_, fig_dict: dict, filename_raw: str, ts_json: str) -> dict:
         .replace('<ft>', ts_dict['ft'])
     ) + '.png'
     return dcc.send_bytes(
-        go.Figure(fig_dict).to_image(format='png'), filename=filename, type='image/png'
+        go.Figure(fig_dict).to_image(
+            format='png', width=image_width, height=image_height
+        ),
+        filename=filename,
+        type='image/png',
     )
 
 
