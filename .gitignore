@@ -13,6 +13,7 @@ wheels/
 test_data/
 uploads/
 scratch.py
+file_system_backend/
 
 # Logs
 logs/

@@ -19,6 +19,8 @@
 
 # TODO: Add ability to add more than two y-axes
 
+# TODO: Update README to include explanation of resampling features
+
 import json
 import webbrowser
 from datetime import datetime as dt
@@ -58,12 +60,15 @@ app = DashProxy(
 
 UPLOAD_PATH = Path('./uploads/')
 UPLOAD_PATH.mkdir(exist_ok=True)
-# deleting all previous uploads
-for item in sorted(UPLOAD_PATH.glob('**/*'), reverse=True):
-    if item.is_file():
-        item.unlink()
-    if item.is_dir():
-        item.rmdir()
+CACHE_PATH = Path('./file_system_backend/')
+
+# deleting all previous uploads and cache
+for path in [UPLOAD_PATH, CACHE_PATH]:
+    for item in sorted(path.glob('**/*'), reverse=True):
+        if item.is_file():
+            item.unlink()
+        if item.is_dir():
+            item.rmdir()
 du.configure_upload(app, folder=UPLOAD_PATH)
 
 primary_dropdown = dcc.Dropdown(
@@ -646,6 +651,7 @@ def on_data_canvas_close(
                 secondary_y=secondary_y,
                 hf_x=df['datetime'].to_numpy(),
                 hf_y=df[channel].to_numpy(),
+                max_n_samples=3000,
             )
     return fig, Serverside(fig), json.dumps(fdt)
 
