@@ -30,16 +30,30 @@ import dash_uploader as du
 import nptdms
 import plotly.graph_objects as go
 import polars as pl
-from dash import Dash, Input, Output, State, callback, dash_table, dcc, html, no_update
+from dash_extensions.enrich import (
+    DashProxy,
+    Input,
+    Output,
+    Serverside,
+    ServersideOutputTransform,
+    State,
+    callback,
+    dash_table,
+    dcc,
+    html,
+    no_update,
+)
 from loguru import logger
 from plotly.subplots import make_subplots
+from plotly_resampler import FigureResampler
 
 logger.add('logs/modash.log', rotation='10 MB', retention='90 days', colorize=False)
 
-app = Dash(
+app = DashProxy(
     name='MoDash',
     title='MoDash',
     external_stylesheets=[dbc.themes.BOOTSTRAP],
+    transforms=[ServersideOutputTransform()],
 )
 
 UPLOAD_PATH = Path('./uploads/')
@@ -326,6 +340,7 @@ app.layout = dbc.Container(
         export_canvas,
         dcc.Store(id='paths_store'),
         dcc.Store(id='timestamp_store'),
+        dcc.Store(id='figure_cache'),
     ],
 )
 
@@ -468,6 +483,7 @@ def on_add_files(new_paths_json: str, current_rows: list[dict]):
 
 @callback(
     Output(tdms_graph.id, 'figure'),
+    Output('figure_cache', 'data'),
     Output('timestamp_store', 'data'),
     Input(data_mgmt_canvas.id, 'is_open'),
     State(file_list.id, 'data'),
@@ -479,7 +495,7 @@ def on_data_canvas_close(
     file_list_rows: list[dict] | None,
     prim_channels: list[str] | None,
     sec_channels: list[str] | None,
-) -> tuple[go.Figure, str] | type[no_update]:
+) -> tuple[dict, FigureResampler, str] | type[no_update]:
     """Processes tdms files and channels lists to create figure.
 
     This callback does the heavy lifting of reading the tdms files, aligning the
@@ -578,7 +594,7 @@ def on_data_canvas_close(
         'ft': first_timestamp.time().strftime('T%H%M%S'),
     }
 
-    fig = make_subplots(specs=[[{'secondary_y': True}]])
+    fig = FigureResampler(make_subplots(specs=[[{'secondary_y': True}]]))
     fig.update_layout(
         margin={'r': 0, 'l': 50, 't': 30, 'b': 125},
         legend={
@@ -613,23 +629,39 @@ def on_data_canvas_close(
     for channels, secondary_y in [(prim_channels, False), (sec_channels, True)]:
         for channel in channels:
             fig.add_trace(
-                go.Scatter(
+                go.Scattergl(
                     # Converting all these to lists because if they remain as polars
                     # series (or any rich data type) when this callback is complete and
                     # the figure is serialized to json, the metadata of the richer data
                     # type will be saved alongside the actual data in the json,
                     # ballooning the size on disk, and therefore the export size. It
                     # also affects performance.
-                    x=df['datetime'].to_list(),
-                    y=df[channel].to_list(),
+                    # x=df['datetime'].to_list(),
+                    # y=df[channel].to_list(),
                     mode='lines',
                     name=channel + (' (secondary)' if secondary_y else ' (primary)'),
                     connectgaps=True,
                     showlegend=True,
                 ),
                 secondary_y=secondary_y,
+                hf_x=df['datetime'].to_numpy(),
+                hf_y=df[channel].to_numpy(),
             )
-    return fig, json.dumps(fdt)
+    return fig, Serverside(fig), json.dumps(fdt)
+
+
+@callback(
+    Output(tdms_graph.id, 'figure', allow_duplicate=True),
+    Input(tdms_graph.id, 'relayoutData'),
+    State('figure_cache', 'data'),
+    prevent_initial_call=True,
+    memoize=True,
+)
+def resample_fig(relayoutdata: dict, fig: FigureResampler):
+    """Just handles resampling the figure data when it's zoomed or panned."""
+    if fig is None:
+        return no_update
+    return fig.construct_update_data_patch(relayoutdata)
 
 
 @callback(Input(new_tab_button.id, 'n_clicks'))
@@ -645,7 +677,7 @@ def on_new_tab(_):
 @callback(
     Output('fig_html_download', 'data'),
     Input(export_interactive_button.id, 'n_clicks'),
-    State(tdms_graph.id, 'figure'),
+    State('figure_cache', 'data'),
     State(export_filename_input.id, 'value'),
     State(plotly_js_radio.id, 'value'),
     State('timestamp_store', 'data'),
@@ -653,7 +685,7 @@ def on_new_tab(_):
 )
 def on_export_interactive(
     _,
-    fig_dict: dict,
+    fig: FigureResampler,
     filename_raw: str,
     plotlyjs_select: str,
     ts_json: str,
@@ -661,7 +693,7 @@ def on_export_interactive(
     """Passes current figure html as dictionary to download component.
 
     Args:
-        fig_dict (dict): dictionary containing serialized figure data
+        fig (FigureResampler): cached resampled figure object
         filename_raw (str): string user has entered into the filename input box,
             including any placeholders
         plotlyjs_select (str): selection user has made with the plotlyjs radio buttons
@@ -685,7 +717,7 @@ def on_export_interactive(
         .replace('<ft>', ts_dict['ft'])
     ) + '.html'
     return dcc.send_string(
-        go.Figure(fig_dict).to_html(include_plotlyjs=plotlyjs),
+        fig.to_html(include_plotlyjs=plotlyjs),
         filename=filename,
         type='text/html',
     )
@@ -712,7 +744,7 @@ def on_export_image(
     """Passes current figure image as dictionary to download component.
 
     Args:
-        fig_dict (dict): dictionary containing serialized figure data
+        fig (FigureResampler): cached resampled figure object
         filename_raw (str): string user has entered into the filename input box,
             including any placeholders
         ts_json (str): json formatted string containing information about the earliest

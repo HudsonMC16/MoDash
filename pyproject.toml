@@ -7,10 +7,12 @@ requires-python = ">=3.13"
 dependencies = [
     "dash>=3.0.3",
     "dash-bootstrap-components>=2.0.1",
+    "dash-extensions>=2.0.4",
     "dash-uploader==0.7.0a2",
     "kaleido>=1.0.0",
     "loguru>=0.7.3",
     "nptdms>=1.10.0",
     "plotly>=6.0.1",
+    "plotly-resampler>=0.11.0",
     "polars>=1.27.1",
 ]
